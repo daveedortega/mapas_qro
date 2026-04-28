@@ -202,8 +202,8 @@ library(leaflet)
 library(htmltools)
 
 labels <- sprintf(
-  "<strong>%s</strong><br/> Votos: %g <br/>Porcentaje: %g %%",
-  mapa_neza$seccion, mapa_neza$votos_morena, mapa_neza$tot_morena
+  "Sección <strong>%s</strong><br/> Lista Nominal: %g<br/> Votos Emitidos: %g <br/> Votos Morena: %g<br/>Porcentaje de Morena: %g %%",
+  mapa_neza$seccion, mapa_neza$lista_nominal, mapa_neza$total, mapa_neza$votos_morena, mapa_neza$tot_morena
 ) %>% lapply(htmltools::HTML)
 
 
@@ -231,7 +231,67 @@ leaflet() %>%
                 textsize = "15px",
                 direction = "auto"))
 
+# Mapa Estático -----------------------------------------------------------
+
+mapa_neza %>% ggplot()+
+  geom_sf(aes(fill = tot_morena))+
+  scale_fill_gradient(
+    low  = "yellow",
+    high = "red"
+  )
+library(ggspatial)
+library(ggmap)
+
+# Back OSM, zoom 14 to get SOMETHING, otherwise tiling sucks on the back, no API key needed!
+ggplot(mapa_neza) +
+  annotation_map_tile(type = "osm", zoom = 14) +   # OSM tiles, no key needed
+  geom_sf(aes(fill = tot_morena), alpha = 0.5, color = "white", linewidth = 0.3) +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Porcentaje de Votos por Morena") +
+  labs(title = "Votos por Sección") +
+  theme_void()
+
+# Mapa por densidad de Secciones
+
+ggplot(mapa_neza) +
+  annotation_map_tile(type = "osm", zoom = 14) +   # OSM tiles, no key needed
+  geom_sf(aes(fill = lista_nominal), alpha = 0.5, color = "white", linewidth = 0.3) +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Lista Nominal por Sección") +
+  labs(title = "Votos por Sección") +
+  theme_void()
 
 
+# Distribucion ------------------------------------------------------------
+
+quantile(mapa_neza$lista_nominal, probs = seq(0,1,0.01))
+
+mapa_neza %>% as.data.frame() %>% 
+  ggplot(aes(x = lista_nominal))+
+  geom_density()+
+  geom_vline(xintercept = 1119, color = 'green')+
+  geom_vline(xintercept = 1462, color = 'blue')+
+  geom_vline(xintercept = 1862, color = 'red')+
+  theme_minimal()
+
+mapa_neza %>% filter(lista_nominal>3000)
+
+mean(mapa_neza$lista_nominal)
+library(sf)
+
+# Reproject to a metric CRS
+df_metric <- st_transform(mapa_neza, crs = 6372)   # MAGNA-SIRGAS / Mexico (if in Mexico)
+
+# Calculate average area in m²
+mean(st_area(df_metric))
+
+# In km²
+mean(st_area(df_metric)) / 1e6
+
+# Tablita
+
+res_neza_muni %>% select(-pan, -pri, -prd, -(naem:pt_morena), 
+                         -(cand_ind1:cand_ind9)) %>% 
+  left_join(mapa_neza %>% as_tibble() %>% select(seccion, ln_morena, tot_morena, candidatura_ganadora)) %>% 
+  mutate(participacion = total_votos/lista_nominal * 100) %>% 
+  filter(seccion!=0) %>% arrange(desc(lista_nominal)) %>%  clipr::write_clip()
 
 
