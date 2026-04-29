@@ -14,18 +14,23 @@ showtext::showtext_auto()
 
 # Mapa de sección electoral
 guerrero_seccion <- read_sf('input/acapulco/cartografia_guerrero/SECCION.shp')
+# acapulco
+aca_seccion <- guerrero_seccion %>% filter(municipio == 1)
 
 # Datos: https://www.iepcgro.mx/principal/sitio/procesos_electorales
 
 gro_municip_24 <- read_csv('input/acapulco/resultados_24/resultados_ayuntamiento24.csv') %>% clean_names()
+gro_diploc_24 <- read_csv('input/acapulco/resultados_24/resultados_diploc24.csv') %>% clean_names()
 gro_municip_24 %>% glimpse()
 aca_mun_24 <- gro_municip_24 %>% filter(municipio == 'ACAPULCO DE JUAREZ')
+aca_diploc_24 <- gro_diploc_24 %>% filter(municipio == 'ACAPULCO DE JUAREZ')
 
 aca_mun_24 <- aca_mun_24 %>% select(nombre_estado, cabecera_distrital_local, nombre_mun = municipio, seccion:lista_nominal)
+aca_diploc_24 <- aca_diploc_24 %>% select(nombre_estado, cabecera_distrital_local, nombre_mun = municipio, seccion:lista_nominal)
 
 aca_mun_24
 
-aca_seccion <- guerrero_seccion %>% inner_join(aca_mun_24)
+# Mapa Distritos -----------------------------------------------------------
 
 aca_seccion %>% ggplot()+
   geom_sf(aes(fill = factor(distrito_f)))+
@@ -219,7 +224,87 @@ leaflet() %>%
                 textsize = "15px",
                 direction = "auto"))
 
+# Mapa con Toggle ---------------------------------------------------------
 
+aca_mun_24 <- aca_mun_24 %>% mutate(coalicion_morena = morena + pt + pvem + pt_pvem_morena + pt_pvem + pt_morena + pvem_morena, 
+                     tot_jhh = coalicion_morena/total_votos*100)
+
+aca_dl_24 <- aca_diploc_24 %>% mutate(coalicion_morena_dl = morena + pt + pvem + pt_pvem_morena + pt_pvem + pt_morena + pvem_morena, 
+                     tot_jhh_dl = coalicion_morena_dl/total_votos*100)
+
+map_data <- left_join(aca_mun_24 %>% select(seccion, coalicion_morena, tot_jhh, total_votos_mun = total_votos, lista_nominal), 
+                      aca_dl_24 %>% select(seccion, coalicion_morena_dl, tot_jhh_dl, total_votos_dl = total_votos)
+)
+
+
+aca_seccion <- aca_seccion %>% left_join(map_data)
+
+aca_seccion <- aca_seccion %>% st_make_valid()
+
+st_crs(aca_seccion)
+aca_seccion <- st_transform(aca_seccion, crs = 4326)
+st_crs(aca_seccion)
+
+library(leaflet)
+library(htmltools)
+
+
+labels_mun <- sprintf(
+  "Sección <strong>%s</strong><br/> Lista Nominal: %g<br/> Votos Emitidos: %g <br/> Votos Morena: %g<br/>Porcentaje de Morena: %g %%",
+  aca_seccion$seccion, aca_seccion$lista_nominal, aca_seccion$total_votos_mun, aca_seccion$coalicion_morena , aca_seccion$tot_jhh
+) %>% lapply(htmltools::HTML)
+
+labels_dl <- sprintf(
+  "Sección <strong>%s</strong><br/> Lista Nominal: %g<br/> Votos Emitidos: %g <br/> Votos Morena: %g<br/>Porcentaje de Morena: %g %%",
+  aca_seccion$seccion, aca_seccion$lista_nominal, aca_seccion$total_votos_dl, aca_seccion$coalicion_morena_dl , aca_seccion$tot_jhh_dl
+) %>% lapply(htmltools::HTML)
+
+
+bins <- c(0, 10, 20,30, 40, 50,60, 70, 80,Inf)
+pal_mun <- colorBin("YlOrRd", domain = aca_seccion$tot_jhh, bins = bins)
+pal_dl <- colorBin("YlOrRd", domain = aca_seccion$tot_jhh_dl, bins = bins)
+
+leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(data = aca_seccion,
+              fillColor = ~pal_mun(tot_jhh),
+              weight = 0.51,
+              opacity = 1,
+              color = "black",
+              fillOpacity = 0.6, 
+              group = "Elecciones Municipales 24",   # ← must match exactly
+              highlightOptions = highlightOptions(
+                weight = 1,
+                color = "blue",
+                fillOpacity = 1,
+                bringToFront = TRUE), 
+              label = labels_mun,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto")) %>% 
+  addPolygons(data = aca_seccion,
+              fillColor = ~pal_dl(tot_jhh_dl),
+              weight = 0.51,
+              opacity = 1,
+              color = "black",
+              fillOpacity = 0.6, 
+              group = "Elecciones DL 24",            # ← must match exactly
+              highlightOptions = highlightOptions(
+                weight = 1,
+                color = "blue",
+                fillOpacity = 1,
+                bringToFront = TRUE), 
+              label = labels_dl,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto")) %>% 
+  addLayersControl(
+    baseGroups = c("Elecciones Municipales 24", "Elecciones DL 24"),  # ← same strings
+    options = layersControlOptions(collapsed = FALSE)
+  )
+  
 # Mapa Estático -----------------------------------------------------------
 
 aca_seccion <- aca_seccion %>% st_make_valid()
