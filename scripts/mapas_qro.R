@@ -395,7 +395,8 @@ leaflet() %>%
 res_qro_21 <- qro_gob_21 %>% group_by(seccion) %>%
   summarise(pan_plus_21 = sum(pan, qi, pan_qi),
             morena_21 = sum(morena), 
-            total_votos_21 = sum(total_votos)) %>% 
+            total_votos_21 = sum(total_votos), 
+            lista_nominal = sum(lista_nominal)) %>% 
   filter(seccion!=0) %>% 
   mutate(p_gob21 = morena_21/total_votos_21*100)
 
@@ -405,7 +406,8 @@ res_qro_24 <- qro_ayun_24 %>% mutate(seccion = as.numeric(seccion)) %>%
   group_by(seccion) %>%
   summarise(prianrd24 = sum(prianrd),
             jhh_24 = sum(jhh), 
-            total_votos_24 = sum(total_votos)) %>% 
+            total_votos_24 = sum(total_votos), 
+            lista_nominal = sum(lista_nominal)) %>% 
   filter(seccion!=0) %>% 
   mutate(p_mun24 = jhh_24/total_votos_24*100)
 
@@ -416,6 +418,7 @@ mapa_gob18 <- mapa_gob18 %>% st_make_valid()
 
 mapa_mun24 <- qro_24 %>% left_join(res_qro_24)
 mapa_mun24 <-mapa_mun24 %>% mutate(across(where(is.numeric), ~ifelse(is.na(.), 0, .)))
+mapa_mun24 <- mapa_mun24 %>% st_make_valid()
 
 ## Plots
 # BINS 18
@@ -479,15 +482,72 @@ leaflet() %>%
     baseGroups = c("Gobernador 2021", "Municipales 2024"),  # radio buttons, only one visible at a time
     options = layersControlOptions(collapsed = FALSE)
   )
+
+# Mapas estáticos 21 y 24 -------------------------------------------------
+
+
+mapa_gob18 %>% ggplot()+
+  geom_sf(aes(fill = p_gob21))+
+  scale_fill_gradient(
+    low  = "yellow",
+    high = "red"
+  )+
+   labs(fill = 'Porcentaje de Votos')
   
+mapa_mun24 %>% ggplot()+
+  geom_sf(aes(fill = p_mun24))+
+  scale_fill_gradient(
+    low  = "yellow",
+    high = "red"
+  )+
+   labs(fill = 'Porcentaje de Votos')
+  
+# Distribución de listas nominales
+quantile(mapa_mun24$lista_nominal, probs  = seq(0,1,0.01))
+
+mapa_mun24 %>% as.data.frame() %>% 
+  ggplot(aes(x = lista_nominal))+
+  geom_density()+
+  geom_vline(xintercept = 1405, color = 'green')+
+  geom_vline(xintercept = 3134, color = 'blue')+
+  geom_vline(xintercept = 4156, color = 'red')+
+  theme_minimal()
 
 
+mapa_mun24 %>% filter(lista_nominal>3000)
+mapa_mun24$lista_nominal %>% mean()
+
+library(ggspatial)
+library(ggmap)
+
+ggplot(mapa_mun24) +
+  annotation_map_tile(type = "osm", zoom = 10) +   # OSM tiles, no key needed
+  geom_sf(aes(fill = lista_nominal), alpha = 0.5, color = "white", linewidth = 0.3) +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Lista Nominal por Sección") +
+  labs(title = "Votos por Sección") +
+  theme_void()
 
 
+# Reproject to a metric CRS
+df_metric <- st_transform(mapa_mun24, crs = 6372)   # MAGNA-SIRGAS / Mexico (if in Mexico)
 
+# Calculate average area in m²
+mean(st_area(df_metric))
 
+# In km²
+mean(st_area(df_metric)) / 1e6
+min(st_area(df_metric)) / 1e6
+max(st_area(df_metric)) / 1e6
 
+# Tablita
 
+mapa_mun24 %>% as_tibble() %>% select(name, dto_elect, seccion, prianrd24, jhh_24, lista_nominal, total_votos_24, p_mun24) %>% 
+  filter(seccion!=0) %>% arrange(desc(lista_nominal)) %>%
+  clipr::write_clip()
+
+mapa_gob18 %>% as_tibble() %>% select(name, description, distrito_l, seccion, pan_plus_21, morena_21, lista_nominal, total_votos_21, p_gob21) %>% 
+  filter(seccion!=0) %>% arrange(desc(lista_nominal)) %>%
+  clipr::write_clip()
 
 
 
