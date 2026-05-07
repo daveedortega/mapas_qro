@@ -236,6 +236,34 @@ map_data <- left_join(aca_mun_24 %>% select(seccion, coalicion_morena, tot_jhh, 
                       aca_dl_24 %>% select(seccion, coalicion_morena_dl, tot_jhh_dl, total_votos_dl = total_votos)
 )
 
+# Escribir ----------------------------------------------------------------
+
+
+#Columnas Importantes
+
+# candidatura_ganadora
+# lista_nominal
+# tot_morena (porcentaje)
+
+aca_mun_24 %>% glimpse()
+
+candidaturas_ganadoras <- aca_mun_24 %>% mutate(cc_pri_pan_prd = pan+pri+prd+pan_pri_prd+pan_pri+pan_prd+pri_prd) %>% 
+  select(seccion, coalicion_morena, cc_pri_pan_prd, mc, ma, fxmg, psg, pes, pac, mlgro, pbg, regeneracion  ) %>% 
+  rename(morena = coalicion_morena) %>% 
+  pivot_longer(morena:regeneracion) %>% 
+  group_by(seccion) %>% slice_max(order_by = value, n = 1) %>% rename(candidatura_ganadora = name)
+
+aca_mun_24 <- aca_mun_24 %>% rename(tot_morena = tot_jhh) %>% left_join(candidaturas_ganadoras)
+
+aca_mun_24 <- aca_mun_24 %>% rename(municipio = nombre_mun)
+
+aca_seccion <- aca_seccion %>% select(id:seccion, -municipio) %>% left_join(aca_mun_24)
+
+aca_seccion %>%saveRDS('../preplike_shiny/data/mapa_mun24_aca.rds')
+
+# Continuar ----------------------------------------------------------------
+
+
 
 aca_seccion <- aca_seccion %>% left_join(map_data)
 

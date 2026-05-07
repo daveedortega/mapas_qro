@@ -180,11 +180,8 @@ resultados_morena_neza <- res_neza_muni %>% filter(seccion!=0) %>%
                                    candidato_no_registrado = sum(candidato_no_registrado),
                                    total = sum(total_votos), 
                                    lista_nominal = sum(lista_nominal)) %>% 
-  pivot_longer(morena:candidato_no_registrado) %>% 
-  mutate(ln_morena = value/lista_nominal * 100, 
-         tot_morena = value/total * 100) %>% 
-  filter(name == 'morena') %>% 
-  select(-name) %>% rename(votos_morena = value)
+  mutate(ln_morena = morena/lista_nominal * 100, 
+         tot_morena = morena/total * 100) 
 
 # Mapa
 
@@ -197,6 +194,22 @@ mapa_neza <- mapa_neza %>% st_make_valid()
 st_crs(mapa_neza)
 mapa_neza <- st_transform(mapa_neza, crs = 4326)
 st_crs(mapa_neza)
+
+# Guardar Mapa ------------------------------------------------------------
+
+# Reproject to a metric CRS
+df_metric <- st_transform(mapa_neza, crs = 6372) 
+mapa_neza$area <- st_area(df_metric) /1e6
+
+mapa_neza <- mapa_neza %>% mutate(municipio = 'Nezahualcoyotl') %>% 
+  select(geometry, everything()) %>% select(-tipo)
+
+mapa_neza %>% glimpse()
+
+saveRDS(mapa_neza, '../preplike_shiny/data/mapa_mun24_neza.rds')
+
+# Exportar mapa -----------------------------------------------------------
+
 
 library(leaflet)
 library(htmltools)

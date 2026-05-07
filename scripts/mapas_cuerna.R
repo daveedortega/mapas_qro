@@ -56,7 +56,7 @@ cuernavaca %>% ggplot()+
 
 # Analisis ----------------------------------------------------------------
 
-ayun_cuerna_24 %>% summarise(sum(tot_votos), sum(l_nominal))
+ayun_cuerna_24 %>% filter(seccion!='Totales') %>% summarise(sum(tot_votos), sum(l_nominal))
 
 res_ayun_cuenra_24 <- ayun_cuerna_24 %>% mutate(
   prianrd = rsp+pan+pri+prd+
@@ -192,19 +192,67 @@ cuernavaca %>% ggplot()+
   scale_fill_gradient(low = "yellow", high = "red", name = "Porcentaje Morena")
   
 
+# Distribucion ------------------------------------------------------------
+
+
+quantile(cuernavaca$l_nominal, probs = seq(0,1,0.01), na.rm = T)
+
+cuernavaca %>% as.data.frame() %>% 
+  ggplot(aes(x = l_nominal))+
+  geom_density()+
+  geom_vline(xintercept = 1260, color = 'green')+
+  geom_vline(xintercept = 2620, color = 'blue')+
+  geom_vline(xintercept = 3252, color = 'red')+
+  theme_minimal()
+
+cuernavaca %>% filter(l_nominal>3000)
+
+mean(cuernavaca$l_nominal, na.rm = T)
+
+# Reproject to a metric CRS
+df_metric <- st_transform(cuernavaca, crs = 6372)   # MAGNA-SIRGAS / Mexico (if in Mexico)
+
+# Calculate average area in m²
+mean(st_area(df_metric))
+
+# In km²
+quantile(st_area(df_metric) / 1e6, probs = seq(0,1,0.01))
+df_metric$area <- as.numeric(st_area(df_metric)/ 1e6)
+df_metric %>% glimpse()
+library(units)
+
+min(df_metric$area)
+max(df_metric$area)
+
+ggplot(df_metric %>% as_tibble(), aes(x = area) )+
+  geom_density()
+
+
+# Secciones
+ggplot(cuernavaca) +
+  annotation_map_tile(type = "osm", zoom = 12) +   # OSM tiles, no key needed, me mamé, demasiado zoom con 14, 11 ok
+  geom_sf(aes(fill = l_nominal), alpha = 0.5, color = "white", linewidth = 0.3) +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Lista Nominal") +
+  theme_void()
 
 
 
-
-
-
-
-
-
-
-
-
-
+ayun_cuerna_24 %>% mutate(
+  prianrd = rsp+pan+pri+prd+
+    c_pan_pri_prd_rsp+c_pan_pri_prd+c_pan_pri_rsp+c_pan_prd_rsp+c_pan_pri+c_pan_prd+c_pan_rsp+
+    c_pri_prd_rsp+c_pri_prd+c_pri_rsp+
+    c_prd_rsp, 
+  shh = morena+na+pes+mas+
+    c_morena_na_pes_mas+c_morena_na_pes+c_morena_na_mas+c_morena_pes_mas+
+    c_morena_pes+c_morena_na+c_morena_mas+
+    c_na_mas+c_na_pes+c_pes_mas,
+  mc_plus = mc + progresa+c_mc_progresa
+) %>% 
+  group_by(seccion) %>% 
+  summarise_at(.cols = c('prianrd', 'shh', 'mc_plus', 'pt', 'pvem', 'pan', 'pri', 'prd', 
+                         'morena', 'na', 'pes', 'mas', 'mc', 'progresa', 
+                         'num_votos_nulos', 'no_registrados', 'tot_votos', 'l_nominal'), .funs = sum) %>% 
+  arrange(desc(l_nominal)) %>% filter(seccion!='Totales') %>% clipr::write_clip()
 
 
 
