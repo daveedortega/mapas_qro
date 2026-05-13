@@ -412,9 +412,10 @@ leaflet() %>%
 
 # Desglose menos secciones ------------------------------------------------
 
-mapa_neza %>% filter(!seccion %in% toptoptop$seccion)
 
 toptoptop <- mapa_neza %>% filter(!is.na(priority)) %>% group_by(priority) %>% slice_max(order_by = lista_nominal, n = 80)
+
+mapa_neza %>% filter(!seccion %in% toptoptop$seccion)
 
 secciones_superpro <- mapa_neza %>% mutate(priority = NA) %>% filter(!seccion %in% toptoptop$seccion) %>% 
   rbind(toptoptop)
@@ -461,6 +462,70 @@ leaflet() %>%
     position = "bottomright",
     pal      = pal_binary,
     values   = mapa_neza$priority,
+    title    = "Propensión a Votar por la Oposición",
+    opacity  = 0.85, 
+    group = 'Propensión a Votar por la Oposición'
+  )
+
+# Desglose menos secciones ------------------------------------------------
+
+#160 cap
+
+muestra_neza
+
+toptoptop <- mapa_neza %>% filter(!is.na(priority), !seccion %in% muestra_neza$SECCION) %>% 
+  slice_max(order_by = lista_nominal, n = 80) %>% mutate(priority = 'Sección Recomendada')
+secciones_muestra <- mapa_neza %>% filter(seccion %in% muestra_neza$SECCION)
+
+mapa_neza %>% filter(!seccion %in% toptoptop$seccion)
+
+secciones_superpro <- mapa_neza %>% mutate(priority = NA) %>% 
+  filter(!seccion %in% toptoptop$seccion) %>% 
+  filter(!seccion %in% secciones_muestra$seccion) %>% 
+  rbind(toptoptop) %>% 
+  rbind(secciones_muestra %>% mutate(priority = 'Sección de Muestreo'))
+
+secciones_superpro %>% count(priority)
+
+pal_binary <- colorFactor(
+  palette  = c("Sección Recomendada" = "green4", 
+               "Sección de Muestreo" = "lightpink"
+  ),
+  domain   = secciones_superpro$priority,
+  na.color = "#cccccc"
+)
+
+
+labels <- sprintf(
+  "Sección <strong>%s</strong><br/> Lista Nominal: %g<br/> Participación: %g %% <br/> Votos Morena: %g<br/>Porcentaje de Morena: %g %%",
+  secciones_superpro$seccion, secciones_superpro$lista_nominal, secciones_superpro$participacion, secciones_superpro$morena, secciones_superpro$tot_morena
+) %>% lapply(htmltools::HTML)
+
+
+
+secciones_superpro %>% count(priority)
+
+leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(data = secciones_superpro, color = 'black', weight = 0.5) %>%
+  
+  # --- Layer 1 ---
+  addPolygons(
+    data        = secciones_superpro,
+    fillColor   = ~pal_binary(priority),
+    group       = 'Tipo de Prioridad',
+    weight = 0.51, opacity = 1, color = "black", fillOpacity = 0.6,
+    label = labels,
+    labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"),
+                                textsize = "15px", direction = "auto"),
+    highlightOptions = highlightOptions(weight = 1, color = "blue",
+                                        fillOpacity = 1, bringToFront = TRUE)
+  ) %>%
+  addLegend(
+    layerId  = "legend_resultados",          # <-- named ID
+    position = "bottomright",
+    pal      = pal_binary,
+    values   = secciones_superpro$priority,
     title    = "Propensión a Votar por la Oposición",
     opacity  = 0.85, 
     group = 'Propensión a Votar por la Oposición'
