@@ -4,7 +4,7 @@
 
 # Preparar Espacio --------------------------------------------------------
 
-pacman::p_load(tidyverse, scales, janitor, readxl, sf)
+pacman::p_load(tidyverse, scales, janitor, readxl, sf, leaflet)
 rm(list = ls())
 dev.off()
 sysfonts::font_add_google('Montserrat')
@@ -106,6 +106,88 @@ mapa_cuerna %>% st_drop_geometry() %>% clipr::write_clip()
 # Donde mejor le vaya al pan?
 # 
 
+# Agregamos partido ganador en polling ------------------------------------
+
+set.seed(23)
+
+ejemplo_casuisticas <- tibble(seccion = mapa_cuerna$seccion, 
+       lista_nominal = mapa_cuerna$lista_nominal, 
+       porcentaje_morena = runif(214, 0,1),
+       porcentaje_oposicion = 1-porcentaje_morena) %>% 
+  mutate(caso_encuesta = case_when(porcentaje_morena>porcentaje_oposicion+0.05 ~ 'Morena Ganador',
+                                   porcentaje_morena<=porcentaje_oposicion+0.05 & porcentaje_morena>=porcentaje_oposicion-0.5 ~ 'Elección Cerrada',
+                                   porcentaje_oposicion>porcentaje_morena+0.05 ~ 'Oposición Ganadora',
+                                   )
+         )
+
+
+mapa_cuerna <- mapa_cuerna %>% left_join(ejemplo_casuisticas %>% mutate(porcentaje_morena = porcentaje_morena*100, 
+                                                                        porcentaje_oposicion = porcentaje_oposicion*100)) 
+
+mapa_cuerna %>% glimpse()
+
+mapa_cuerna %>% count(caso_encuesta)
+
+color_map_encuesta <- c(
+  "Morena Ganador" = "green4",
+  "Elección Cerrada" = "yellow2",
+  "Oposición Ganadora" = "red3"
+)
+
+pal_encuesta <- colorFactor(
+  palette  = unname(color_map_encuesta),
+  levels   = names(color_map_encuesta),
+  domain   = mapa_cuerna$caso_encuesta,
+  na.color = "#cccccc"
+)
+
+labels_encuesta <- sprintf(
+  "Sección <strong>%s</strong><br/> Lista Nominal: %g<br/> Porcentaje Encuesta Morena: %g %% <br/>Porcentaje Oposición: %g %%",
+  mapa_cuerna$seccion, mapa_cuerna$lista_nominal, mapa_cuerna$porcentaje_morena, mapa_cuerna$porcentaje_oposicion
+) %>% lapply(htmltools::HTML)
+
+
+# RE-Map ------------------------------------------------------------------
+
+
+leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(data = mapa_cuerna, 
+              weight = 0.51, opacity = 1, color = "black", fillOpacity = 0.6,
+              fillColor = ~pal_binary(priority),
+              highlightOptions = highlightOptions(color = 'blue',
+                                                  fillColor = 'blue'), 
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"), group = 'Elección 2024') %>% 
+  addPolygons(data = mapa_cuerna, 
+              weight = 0.51, opacity = 1, color = "black", fillOpacity = 0.6,
+              fillColor = ~pal_encuesta(caso_encuesta),
+              highlightOptions = highlightOptions(color = 'blue',
+                                                  fillColor = 'blue'), 
+              label = labels_encuesta,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"), group = 'Encuesta Mayo 2026') %>% 
+  addLegend(position = "bottomright",
+            pal      = pal_binary,
+            values   = mapa_cuerna$priority,
+            title    = "Tipo de Sección",
+            group = 'Elección 2024',
+            opacity  = 1) %>% 
+  addLegend(position = "bottomright",
+            pal      = pal_encuesta,
+            values   = mapa_cuerna$caso_encuesta,
+            title    = "Tipo de Sección",
+            group = 'Encuesta Mayo 2026',
+            opacity  = 1) %>% 
+  addLayersControl(
+    overlayGroups = c("Encuesta Mayo 2026", "Elección 2024"),
+    options       = layersControlOptions(collapsed = FALSE)
+  )
 
 # Copy participacion y cosa morena ----------------------------------------
 
