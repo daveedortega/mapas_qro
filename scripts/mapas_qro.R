@@ -14,7 +14,6 @@ showtext::showtext_auto()
 
 # Elecciones 2024: https://ieeq.mx/contenido/elecciones/2023_2024/resultados/#/home/dip/entidad-map
 
-qro_ayun_24 <- read_csv('input/queretaro/resultados_24/IEEQ_AYUN_QRO/') %>% clean_names()
 qro_ayun_24 <- read_csv('input/queretaro/resultados_24/IEEQ_AYUN_QRO/QRO_AYUN_RESULTADOS_2024.csv') %>% clean_names()
 qro_dip_24 <- read_csv('input/queretaro/resultados_24/IEEQ_DIP_QRO/QRO_DIP_LOC_RESULTADOS_2024.csv')%>% clean_names()
 
@@ -103,6 +102,36 @@ qro_ayun_24 %>% select(seccion, lista_nominal, total_votos) %>%
 cs_ayun_24 <- qro_ayun_24 %>% select(seccion, 10:37) %>% 
   pivot_longer(cols = 2:27, names_to = 'partido', values_to = 'votos') %>% 
   select(-total_votos, -lista_nominal)
+
+
+# Escribir ----------------------------------------------------------------
+
+qro_ayun_24 %>% select(10:37) %>% glimpse()
+qro_ayun_24 <- qro_ayun_24 %>% filter(!is.na(municipio))
+
+res_ayun24 <- qro_ayun_24 %>% group_by(estado,municipio,seccion) %>% 
+  summarise_at(.vars = 7:34, .funs = sum) %>% 
+  mutate(shh =  morena+pt+pvem+pvem_morena+pvem_morena_pt+morena_pt+pvem_pt, 
+         prianrd = pri+pan+prd+pan_pri_prd+pan_pri+pan_prd+pri_prd
+         ) %>% 
+  mutate(tot_morena = shh/total_votos*100)
+
+candidatura_mun24 <- res_ayun24 %>% select(seccion, mc, qs:smg, shh, prianrd) %>% 
+  mutate(seccion = as.numeric(seccion)) %>% 
+  ungroup() %>% pivot_longer(mc:prianrd) %>% 
+  group_by(seccion) %>% 
+  slice_max(order_by = value, n = 1) %>% 
+  select(seccion, candidatura_ganadora = name)
+
+
+res_ayun24 <- res_ayun24 %>% mutate(seccion = as.numeric(seccion)) %>% left_join(candidatura_mun24)
+
+
+mapa_ayun24_qro <- qro_24 %>% mutate(seccion = as.numeric(seccion)) %>% left_join(res_ayun24 %>% ungroup() %>% select(-municipio, -estado)) 
+
+saveRDS(mapa_ayun24_qro, '../preplike_shiny/data/mapa_qro_mun24.rds')
+
+# Seguir ------------------------------------------------------------------
 
 # 1080 acá, raro
 queretaro %>% as_tibble() %>% count(seccion)
@@ -205,6 +234,28 @@ cambios_18_24 %>% mutate(partido = case_when(partido == 'morena' ~ 'Morena',
 
 
 # Elecciones Gobernador 21 ------------------------------------------------
+
+qro_18 <- qro_18 %>% select(name, descriptio, distrito_a, distrito_l = distrito_1, municipio, seccion) %>% 
+  mutate(seccion = as.numeric(seccion))
+
+
+# Escribir Mapa -----------------------------------------------------------
+
+
+qro_gob_21 <- qro_gob_21 %>% mutate(across(where(is.numeric), ~ifelse(is.na(.), 0, .))) %>%  
+  mutate(pan_plus = pan+qi+pan_qi) %>% 
+  mutate(tot_morena = morena/total_votos*100)
+
+candidatura_ganadora_qrogob21 <- qro_gob_21 %>% select(seccion, pan:pan_qi) %>%pivot_longer(pan:pan_qi) %>% 
+  group_by(seccion) %>% slice_max(n = 1, order_by = value)
+
+qro_gob_21 <- qro_gob_21 %>% left_join(candidatura_ganadora_qrogob21)
+
+qro_18 <- qro_18 %>% left_join(qro_gob_21 %>% ungroup() %>% select(-name, -municipio)) 
+
+saveRDS(qro_18, '../preplike_shiny/data/mapa_qro_gob21.rds')
+
+# Seguir ------------------------------------------------------------------
 
 qro_gob_21 %>% mutate(across(where(is.numeric), ~ifelse(is.na(.), 0, .))) %>%  
   mutate(pan_plus = pan+qi+pan_qi) %>% 
@@ -549,6 +600,55 @@ mapa_gob18 %>% as_tibble() %>% select(name, description, distrito_l, seccion, pa
   filter(seccion!=0) %>% arrange(desc(lista_nominal)) %>%
   clipr::write_clip()
 
+# Copy-paste ---------------------------------------------------------------
+
+mapa_qro <- readRDS('../preplike_shiny/data/mapa_qro_mun24.rds')
+mapa_qro$pvem_morena_pt
+mapa_qro$morena
+
+ci     <- classInt::classIntervals(var = mapa_qro$tot_morena, n = 5, style = "jenks")
+breaks <- ci$brks
+pal <- colorBin(
+  palette  = c("#FFFF00", "#FFC300", "#FF8C00", "#E84A0C", "#C0392B"),
+  domain   = mapa_qro$tot_morena,
+  bins     = breaks,
+  na.color = "#cccccc"
+)
+
+
+labels <- sprintf(
+  "Sección <strong>%s</strong><br/> Lista Nominal: %g<br/> Votos Emitidos: %g <br/> Votos Morena: %g<br/>Porcentaje de Morena: %g %%",
+  mapa_qro$seccion, mapa_qro$lista_nominal, mapa_qro$total_votos, mapa_qro$morena, mapa_qro$tot_morena
+) %>% lapply(htmltools::HTML)
+
+
+leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(data = mapa_qro, color = "black", weight = 0.5, fill = FALSE) |>
+  addPolygons(data = mapa_qro, 
+              fillColor        = ~pal(tot_morena),
+              weight           = 0.5,
+              color            = "black",
+              opacity          = 1,
+              fillOpacity      = 0.6,
+              group = 'resultados', 
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"),
+              highlightOptions = highlightOptions(
+                weight      = 1.5,
+                color       = "blue",
+                fillOpacity = 1,
+                bringToFront = TRUE
+              )
+  ) %>% 
+  addLegend(position = "bottomright",
+            pal      = pal,
+            values   = breaks,
+            title    = "Porcentaje de Voto por Morena",
+            opacity  = 1)
 
 
 
